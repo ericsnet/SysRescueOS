@@ -7,17 +7,16 @@ def test_parse_meminfo_extracts_values_in_kib():
         "MemAvailable:    8192000 kB\n"
         "SwapTotal:             0 kB\n"
     )
-    assert result == {
-        "MemTotal": 16384000,
-        "MemAvailable": 8192000,
-        "SwapTotal": 0,
-    }
+    assert result == {"MemTotal": 16384000, "MemAvailable": 8192000, "SwapTotal": 0}
 
 
 def test_parse_meminfo_ignores_invalid_lines():
-    result = parse_meminfo("Not a metric\nCached: unknown kB\n")
-    assert result == {}
+    assert parse_meminfo("Not a metric\nCached: unknown kB\n") == {}
 
 
 def test_run_read_only_rejects_empty_command():
     assert run_read_only([]) is None
+
+
+def test_run_read_only_rejects_commands_outside_allowlist():
+    assert run_read_only(["sh", "-c", "echo unsafe"]) is None
