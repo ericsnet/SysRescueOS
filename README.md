@@ -72,7 +72,3 @@ python -m pytest
 ## Project status
 
 Experimental. Do not rely on this prototype as the sole recovery method for an important system.
-
-## License
-
-MIT. See [LICENSE](LICENSE).
