@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import platform
 import shutil
 import socket
@@ -21,25 +20,14 @@ def read_text(path: str | Path) -> str | None:
 
 
 def run_read_only(command: list[str], timeout: float = 3.0) -> str | None:
-    """Run a fixed, read-only system command without invoking a shell."""
-    if not command or not isinstance(command, list):
+    """Run the explicitly allowlisted, read-only lsblk command."""
+    if not command or not isinstance(command, list) or command[0] != "lsblk":
         return None
-
     try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=timeout,
-            shell=False,
-        )
+        result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=timeout, shell=False)
     except (OSError, subprocess.TimeoutExpired):
         return None
-
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip()
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def parse_meminfo(content: str) -> dict[str, int]:
@@ -90,41 +78,28 @@ def collect_memory() -> dict[str, int | None]:
     raw = read_text("/proc/meminfo")
     if not raw:
         return {"total_kib": None, "available_kib": None, "used_kib": None}
-
     values = parse_meminfo(raw)
     total = values.get("MemTotal")
     available = values.get("MemAvailable")
     used = total - available if total is not None and available is not None else None
-    return {
-        "total_kib": total,
-        "available_kib": available,
-        "used_kib": used,
-    }
+    return {"total_kib": total, "available_kib": available, "used_kib": used}
 
 
 def collect_storage() -> dict[str, Any]:
     root_usage = None
     try:
         usage = shutil.disk_usage("/")
-        root_usage = {
-            "total_bytes": usage.total,
-            "used_bytes": usage.used,
-            "free_bytes": usage.free,
-        }
+        root_usage = {"total_bytes": usage.total, "used_bytes": usage.used, "free_bytes": usage.free}
     except OSError:
         pass
 
-    raw_disks = run_read_only(
-        ["lsblk", "--json", "--bytes", "--output", "NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS,MODEL"]
-    )
+    raw_disks = run_read_only(["lsblk", "--json", "--bytes", "--output", "NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS,MODEL"])
     disks: list[dict[str, Any]] = []
     if raw_disks:
         try:
-            parsed = json.loads(raw_disks)
-            disks = parsed.get("blockdevices", [])
+            disks = json.loads(raw_disks).get("blockdevices", [])
         except (json.JSONDecodeError, AttributeError):
-            disks = []
-
+            pass
     return {"root_filesystem": root_usage, "devices": disks}
 
 
@@ -135,15 +110,12 @@ def collect_network() -> list[dict[str, str | None]]:
         names = sorted(item.name for item in net_root.iterdir() if item.name != "lo")
     except OSError:
         return interfaces
-
     for name in names:
-        interfaces.append(
-            {
-                "name": name,
-                "state": read_text(net_root / name / "operstate"),
-                "mac_address": read_text(net_root / name / "address"),
-            }
-        )
+        interfaces.append({
+            "name": name,
+            "state": read_text(net_root / name / "operstate"),
+            "mac_address": read_text(net_root / name / "address"),
+        })
     return interfaces
 
 
